@@ -1,0 +1,26 @@
+# Render Blueprint（可选，但强烈推荐）
+#
+# 用法：把仓库连到 Render 后，Render 会自动识别这个文件并创建 Web Service。
+# 只需在创建时填写 TURSO_DATABASE_URL 与 TURSO_AUTH_TOKEN 两个环境变量。
+
+services:
+  - type: web
+    name: ybbn-extra
+    runtime: node
+    plan: free
+    region: singapore # 国内用户延迟较低；也可改 oregon / frankfurt
+    branch: main
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: COOKIE_SECURE
+        value: "1"
+      # 下面两个在 Render 控制台里手动填（不要写进仓库）
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false

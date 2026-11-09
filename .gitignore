@@ -1,0 +1,28 @@
+node_modules/
+.env
+.env.*
+!.env.example
+
+# 本地 SQLite
+local.db
+libsql.db
+*.db
+*.db-shm
+*.db-wal
+
+# 测试 / 工具产物
+*.log
+e2e*.txt
+ui*.txt
+*.tmp
+.tmp/
+.npmc/
+.npm-cache/
+.chrome-profile/
+.chrome2/
+.chrome-dl/
+pm2/
+
+# 系统
+.DS_Store
+Thumbs.db
