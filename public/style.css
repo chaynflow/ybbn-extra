@@ -182,6 +182,36 @@ select:focus {
   max-width: 460px;
   margin: 1.2rem auto 0;
 }
+
+/* 建房设置项 */
+.settings {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  padding: 0.6rem;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: #171a22;
+}
+.setting {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.setting label {
+  font-size: 0.74rem;
+  color: var(--muted);
+}
+.mini-select {
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  font-size: 0.85rem;
+}
+.settings-hint {
+  font-size: 0.76rem;
+  line-height: 1.5;
+  margin: 0;
+}
 .room-item {
   display: flex;
   justify-content: space-between;

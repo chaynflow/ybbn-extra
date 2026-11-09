@@ -10,7 +10,6 @@ import {
   pathLen,
   progressOf,
   columnOwner,
-  candidateSplits,
   chooseSplit,
   continueRoll,
   stopTurn,
@@ -18,6 +17,7 @@ import {
   currentPlayer,
   clonePlayers,
   legsUsed,
+  rulesOf,
 } from './engine.js';
 
 /** 单组 3 骰求和的概率分布（3~18） */
@@ -104,6 +104,9 @@ export function surviveProbability(state) {
   const turn = state.turn;
   const player = currentPlayer(state);
   const players = state.players;
+  const rules = rulesOf(state);
+  const markers = rules.markers;
+  const activeCols = new Set(rules.columns);
 
   // 已有腿所在列的概率质量
   let hit = 0;
@@ -114,12 +117,12 @@ export function surviveProbability(state) {
   }
   // 剩余可开新列的概率质量
   let open = 0;
-  if (legsUsed(turn.legs) < RULES.markers) {
-    for (let n = 3; n <= 18; n++) {
+  if (legsUsed(turn.legs) < markers) {
+    for (const n of activeCols) {
       if (turn.legs[n]) continue;
       if (columnOwner(players, n) !== null) continue;
       if (progressOf(player, n) >= pathLen(n)) continue;
-      open += SUM3_PROB[n];
+      open += SUM3_PROB[n] || 0;
     }
   }
   const missOne = Math.max(0, 1 - (hit + open));

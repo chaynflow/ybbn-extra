@@ -12,7 +12,8 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "test": "node tests/engine.test.js",
-    "db:init": "node scripts/init-db.mjs"
+    "db:init": "node scripts/init-db.mjs",
+    "db:doctor": "node scripts/doctor.mjs"
   },
   "dependencies": {
     "@libsql/client": "^0.14.0",

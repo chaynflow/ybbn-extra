@@ -26,3 +26,8 @@ pm2/
 # 系统
 .DS_Store
 Thumbs.db
+
+auth
+auth-wal
+auth-shm
+

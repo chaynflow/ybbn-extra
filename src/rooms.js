@@ -10,6 +10,7 @@
  */
 import {
   RULES,
+  CONFIG_LIMITS,
   OFFER_COUNT,
   createPlayer,
   newGameState,
@@ -24,6 +25,8 @@ import {
   pathLen,
   columnOwner,
   legsUsed,
+  rulesOf,
+  normalizeRules,
 } from '../shared/engine.js';
 import { playTurnToEnd } from '../shared/ai.js';
 import * as db from './db.js';
@@ -52,9 +55,10 @@ export function publicView(game, viewerSeat = null) {
   const turn = d.turn;
   const cur = currentPlayer(d);
   const isYourTurn = viewerSeat != null && viewerSeat === d.current && !d.ended;
+  const rules = rulesOf(d);
 
   const closed = {};
-  for (let n = 3; n <= 18; n++) {
+  for (const n of rules.columns) {
     const owner = columnOwner(d.players, n);
     if (owner !== null) closed[n] = owner;
   }
@@ -70,8 +74,15 @@ export function publicView(game, viewerSeat = null) {
     winnerSeats: d.winnerSeats,
     current: d.current,
     round: turn?.round ?? 1,
-    winColumns: RULES.winColumns,
-    markers: RULES.markers,
+    /** 本局规则：路标数 / 获胜列数 / 牌面列 */
+    rules: {
+      markers: rules.markers,
+      winColumns: rules.winColumns,
+      columnCount: rules.columnCount,
+      columns: rules.columns,
+    },
+    winColumns: rules.winColumns,
+    markers: rules.markers,
     players: d.players.map((x) => ({
       seat: x.seat,
       name: x.name,
@@ -104,7 +115,7 @@ export function publicView(game, viewerSeat = null) {
           lastMove: turn.lastMove,
           legs: turn.legs,
           legsUsed: legsUsed(turn.legs),
-          markersLeft: RULES.markers - legsUsed(turn.legs),
+          markersLeft: rules.markers - legsUsed(turn.legs),
           rolls: turn.rolls,
           stopped: turn.stopped,
           busted: turn.busted,
@@ -120,7 +131,11 @@ export function publicView(game, viewerSeat = null) {
 
 /* ─────────────── 创建 / 载入 ─────────────── */
 
-export async function createRoom({ roomName, host, botCount = 0, color }) {
+/**
+ * 创建房间。
+ * options: { markers, winColumns, columnCount } —— 可选，会做范围校验与归一化
+ */
+export async function createRoom({ roomName, host, botCount = 0, color, markers, winColumns, columnCount }) {
   const seats = Math.min(RULES.maxPlayers, 1 + Math.max(0, Math.min(5, botCount)));
   const players = [];
   for (let i = 0; i < seats; i++) {
@@ -128,7 +143,8 @@ export async function createRoom({ roomName, host, botCount = 0, color }) {
     players.push(createPlayer(i, isBot ? `电脑${i}` : host.name, i === 0 ? color || 'red' : undefined, isBot));
   }
 
-  const data = newGameState(players);
+  const rules = normalizeRules({ markers, winColumns, columnCount });
+  const data = newGameState(players, Math.random, rules);
   data.players = players;
 
   const game = {
@@ -164,6 +180,7 @@ export async function getGame(id) {
   const g = await db.loadGame(id);
   if (!g) return null;
   // 兼容老状态：补齐字段
+  if (!g.data.rules) g.data.rules = normalizeRules({});
   for (const p of g.data.players) {
     p.progress = p.progress || {};
     p.claimed = p.claimed || [];

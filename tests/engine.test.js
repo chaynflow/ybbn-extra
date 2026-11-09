@@ -25,6 +25,9 @@ import {
   columnOwner,
   currentPlayer,
   pendingSummary,
+  normalizeRules,
+  columnsForCount,
+  CONFIG_LIMITS,
 } from '../shared/engine.js';
 import { bestSplit, surviveProbability, stepOnce } from '../shared/ai.js';
 
@@ -216,4 +219,117 @@ test('pendingSummary / surviveProbability 正常', () => {
 
   const p = surviveProbability(newGameState(mkPlayers(2), mkRng(3)));
   assert.ok(p > 0 && p <= 1);
+});
+
+/* ═══════════ 可配置规则 ═══════════ */
+
+test('normalizeRules：默认值与范围钳制', () => {
+  const d = normalizeRules({});
+  assert.equal(d.markers, 3);
+  assert.equal(d.winColumns, 5);
+  assert.equal(d.columnCount, 16);
+  assert.equal(d.columns.length, 16);
+
+  const clamp1 = normalizeRules({ markers: 99, winColumns: 99, columnCount: 99 });
+  assert.equal(clamp1.markers, 6);
+  assert.equal(clamp1.columnCount, 16);
+  assert.equal(clamp1.winColumns, 16);
+
+  const low = normalizeRules({ markers: -5, winColumns: 0, columnCount: 0 });
+  assert.equal(low.markers, 1);
+  assert.equal(low.winColumns, 1);
+  assert.equal(low.columnCount, 1);
+});
+
+test('normalizeRules：获胜列数不会超过牌面列数', () => {
+  const r = normalizeRules({ columnCount: 6, winColumns: 10 });
+  assert.equal(r.columnCount, 6);
+  assert.equal(r.winColumns, 6);
+  assert.equal(r.columns.length, 6);
+});
+
+test('columnsForCount：围绕中间截取，且连续', () => {
+  assert.equal(columnsForCount(16).length, 16);
+  assert.deepEqual(columnsForCount(16)[0], 3);
+  assert.deepEqual(columnsForCount(16)[15], 18);
+
+  const c10 = columnsForCount(10);
+  assert.equal(c10.length, 10);
+  assert.deepEqual(c10, [6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+
+  const c5 = columnsForCount(5);
+  assert.equal(c5.length, 5);
+  // 连续且含中间列
+  assert.ok(c5.includes(10));
+  for (let i = 1; i < c5.length; i++) assert.equal(c5[i], c5[i - 1] + 1);
+
+  // 任何数量都应连续且居中
+  for (let n = 1; n <= 16; n++) {
+    const cols = columnsForCount(n);
+    assert.equal(cols.length, n);
+    for (let i = 1; i < cols.length; i++) assert.equal(cols[i], cols[i - 1] + 1);
+  }
+});
+
+test('每局配置独立：不同 markers 生效', () => {
+  for (const markers of [1, 2, 3, 5, 6]) {
+    const ps = mkPlayers(2);
+    const st = newGameState(ps, mkRng(11), { markers, winColumns: 5, columnCount: 16 });
+    assert.equal(st.rules.markers, markers);
+    // 腿数永远不会超过配置
+    let guard = 0;
+    while (!st.turn.busted && !st.turn.stopped && guard++ < 50) {
+      const best = bestSplit(st);
+      if (!best) break;
+      chooseSplit(st, { key: best.key });
+      assert.ok(legsUsed(st.turn.legs) <= markers, `腿数 ${legsUsed(st.turn.legs)} 超过 ${markers}`);
+      const c = continueRoll(st, mkRng(guard * 7 + 1));
+      if (c.busted) break;
+    }
+  }
+});
+
+test('牌面之外的列不会被推进', () => {
+  const ps = mkPlayers(2);
+  const st = newGameState(ps, mkRng(21), { markers: 3, winColumns: 3, columnCount: 10 });
+  const cols = new Set(st.rules.columns);
+  assert.ok(!cols.has(3), '10 条路径时不应含 3 号列');
+
+  // 直接喂一个落在牌面外的数字
+  const t = newTurn(1);
+  t.dice = [1, 1, 1, 1, 1, 1, 1, 1, 1];
+  const pv = previewValues(ps[0], ps, t, [3, 3, 3], { markers: 3, columns: st.rules.columns });
+  assert.equal(pv.ok, false);
+  assert.ok(pv.closedSkipped.includes(3));
+});
+
+test('获胜列数按每局配置判定', () => {
+  for (const winColumns of [1, 2, 5]) {
+    const ps = mkPlayers(2);
+    const st = newGameState(ps, mkRng(31), { markers: 3, winColumns, columnCount: 16 });
+    ps[0].claimed = [3, 4, 5, 6].slice(0, winColumns - 1);
+    st.current = 0;
+    // 再占一条
+    const target = [7, 8, 9, 10].find((n) => !ps[0].claimed.includes(n));
+    st.turn.legs = { [target]: pathLen(target) };
+    stopTurn(st);
+    assert.equal(st.ended, true, `winColumns=${winColumns} 应在占满后结束`);
+    assert.deepEqual(st.winnerSeats, [0]);
+  }
+});
+
+test('AI 在极小配置下也能打完（2 腿 / 2 列胜 / 7 条路径）', () => {
+  for (let i = 0; i < 40; i++) {
+    const rng = mkRng(900 + i * 7);
+    const ps = mkPlayers(2);
+    const st = newGameState(ps, rng, { markers: 2, winColumns: 2, columnCount: 7 });
+    let guard = 0;
+    while (!st.ended && guard++ < 20000) stepOnce(st, rng);
+    assert.ok(st.ended, `第 ${i} 局未结束`);
+    const w = ps[st.winnerSeats[0]];
+    assert.ok(w.claimed.length >= 2);
+    // 占领的列都在牌面内
+    const cols = new Set(st.rules.columns);
+    for (const n of w.claimed) assert.ok(cols.has(n), `占领了牌面外的 ${n} 号列`);
+  }
 });

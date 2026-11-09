@@ -17,6 +17,8 @@
 
 ## 一、规则
 
+> ⚙️ **建房时可自定义三项**：路标数（1~6）、需要占领的路径数（1~N）、展示的路径数（5~16）。下面是默认值（3 腿 / 5 列胜 / 16 条路径）。
+
 ### 骰子：9 枚自由分组，从 280 种里抽 5 种
 
 每回合摇 **9 枚**骰子。9 枚骰子任意分成 3 组、每组 3 枚，共 **280 种分法**。
@@ -54,6 +56,27 @@
 3. 然后二选一：
    - **✋ 停止**：锁定本回合所得。
    - **🎲 继续摇**：重新摇骰 + 重新抽 5 种分法。若抽到的一种都推不动 → **BUST**，本回合新推进全部作废（永久进度不受影响）。
+
+### 可自定义的规则（建房时设置）
+
+在首页的「开一桌 → 创建房间」里可以设置：
+
+| 设置项 | 范围 | 默认 | 说明 |
+| --- | --- | --- | --- |
+| **路标数** | 1 ~ 6 枚 | 3 | 路标越少，每回合能推进的列越少，越容易爆掉 |
+| **展示路径数** | 5 ~ 16 条 | 16 | 少于此数时取 3~18 里**围绕中间的一段**（如 10 条 → 6~15 号） |
+| **需占领路径数** | 1 ~ 展示路径数 | 5 | 超过路径数会自动降为路径数 |
+
+设置面板会实时显示「牌面 X~Y 号（共 N 条）· 每回合 M 条腿 · 先占 K 条路径获胜」。
+
+几组推荐配置：
+
+| 玩法 | 路标 | 路径数 | 获胜 | 特点 |
+| --- | --- | --- | --- | --- |
+| 默认 | 3 | 16 | 5 | 平衡，约 25 分钟 |
+| 快节奏 | 3 | 9 | 3 | 牌面集中在中段，10 分钟一局 |
+| 硬核 | 2 | 16 | 5 | 腿少，爆率高，取舍更难 |
+| 休闲 | 5 | 16 | 6 | 腿多、宽容度高，适合新手 |
 
 ### 占领与胜利
 
@@ -177,7 +200,7 @@ https://<你的域名>/api/health
 ## 六、怎么玩
 
 1. 首页输入昵称 → 「开始」。
-2. 「开一桌」选电脑对手数量 → **创建房间**。
+2. 「开一桌」里可以设置**路标数 / 需占领路径数 / 展示路径数**，选好电脑对手数量 → **创建房间**。
 3. 拉朋友：把网址和**房间码**发给他，他在「加入房间」填码。
 
 ### 对局中
@@ -238,7 +261,7 @@ ybbn-extra/
 | POST | `/api/login` | `{name}` |
 | GET | `/api/me` | 当前玩家与战绩 |
 | GET | `/api/rooms` | 房间列表 |
-| POST | `/api/rooms` | `{roomName, botCount}` 建房 |
+| POST | `/api/rooms` | `{roomName, botCount, markers, winColumns, columnCount}` 建房 |
 | POST | `/api/rooms/join` | `{code}` 加入 |
 | GET | `/api/rooms/:id` | 拉取对局（含本回合 5 种分法） |
 | POST | `/api/games/:id/act` | `{action:"choose", key}` / `{action:"continue"}` / `{action:"stop"}` |
@@ -264,11 +287,36 @@ ybbn-extra/
 **Q：`缺少 TURSO_DATABASE_URL`？**
 Environment 没填或没重新部署。改完点 **Manual Deploy → Deploy latest commit**。
 
+**Q：启动失败 `LibsqlError: SERVER_ERROR: Server returned HTTP status 401`？**
+这是 **token 认证失败**。先用诊断脚本定位：
+
+```powershell
+$env:TURSO_DATABASE_URL="libsql://xxx.turso.io"
+$env:TURSO_AUTH_TOKEN="你的token"
+npm run db:doctor
+```
+
+脚本会逐项检查：变量是否存在、URL 协议对不对、token 是不是完整的三段式 JWT、有没有过期、以及真实连接结果。
+
+`401` 的常见原因（按概率排序）：
+
+1. **token 复制不完整** —— Turso token 是超长三段式 `xxx.yyy.zzz`，终端复制容易截断。到 <https://app.turso.tech> → 数据库 → Tokens → **Create Token**，用复制按钮
+2. **token 与数据库不匹配** —— 你有多个库时拿错了。`turso db list` 核对 URL
+3. **变量名拼错** —— 必须是 `TURSO_AUTH_TOKEN`，不是 `TURSO_TOKEN`
+4. **值带了引号或空格** —— Render 里填 `eyJ...` 而不是 `"eyJ..."`，首尾别有空格
+5. **改了变量没重新部署** —— Render 不会自动重启，要 **Manual Deploy**
+
+本地 `npm run db:doctor` 通过后，Render 上一般就没问题了；如果本地能通、Render 不通，问题一定在 Render 的变量或部署步骤。
+
 **Q：能改规则参数吗？**
-- 路径长度：`shared/engine.js` 的 `PATH_LENGTHS`
-- 路标数：`RULES.markers`
-- 获胜列数：`RULES.winColumns`
-- 每回合分法数：`OFFER_COUNT`
+
+现在**建房时就能改**三项：路标数、需占领的路径数、展示的路径数（见第一节的表格）。
+
+如果想改默认值或范围，编辑 `shared/engine.js`：
+
+- `RULES.markers` / `RULES.winColumns`：默认值
+- `CONFIG_LIMITS`：各自的可选范围（路标 1~6、获胜 1~16、路径 1~16）
+- `PATH_LENGTHS`：每条路径的长度
 
 改完 `npm test` 验证。
 

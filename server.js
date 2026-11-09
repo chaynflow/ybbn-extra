@@ -14,6 +14,7 @@ import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import {
   RULES,
+  CONFIG_LIMITS,
   COLUMN_LIST,
   PATH_LENGTHS,
   TOTAL_SPACES,
@@ -82,6 +83,7 @@ app.get('/api/health', wrap(async (_req, res) => {
 app.get('/api/meta', (_req, res) => {
   res.json({
     rules: RULES,
+    configLimits: CONFIG_LIMITS,
     columns: COLUMN_LIST,
     pathLengths: PATH_LENGTHS,
     totalSpaces: TOTAL_SPACES,
@@ -138,8 +140,8 @@ app.get('/api/rooms', wrap(async (_req, res) => {
 
 app.post('/api/rooms', wrap(async (req, res) => {
   const user = await requireUser(req);
-  const { roomName, botCount, color } = req.body || {};
-  const game = await rooms.createRoom({ roomName, host: user, botCount, color });
+  const { roomName, botCount, color, markers, winColumns, columnCount } = req.body || {};
+  const game = await rooms.createRoom({ roomName, host: user, botCount, color, markers, winColumns, columnCount });
   const seat = 0;
   res.json({ game: rooms.publicView(game, seat), seat });
 }));

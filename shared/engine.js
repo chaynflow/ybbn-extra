@@ -83,6 +83,79 @@ export function spotScore(index0) {
 export const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 export const isColumnNumber = (n) => Number.isInteger(n) && n >= 3 && n <= 18;
 
+/* ═══════════════════ 每局可配置参数 ═══════════════════ */
+
+/** 可配置参数的取值范围 */
+export const CONFIG_LIMITS = Object.freeze({
+  /** 临时路标（腿）数 = 每回合最多推进的列数 */
+  markers: { min: 1, max: 6, default: RULES.markers },
+  /** 需要占领多少列获胜 */
+  winColumns: { min: 1, max: 16, default: RULES.winColumns },
+  /** 展示/使用的路径数（从 3~18 里取全部或中间一段） */
+  columnCount: { min: 1, max: 16, default: 16 },
+});
+
+/**
+ * 由「路径数」推导实际使用的列。
+ * 取 3~18 里**以中间为中心**的一段，保证长度分布最优：
+ *   16 → 3..18（全部）
+ *   13 → 5..17 之前的对称段 …
+ * 奇数个时取正中间（如 3 → 8,9,10… 实际取 3 个中间列）。
+ */
+export function columnsForCount(count) {
+  const total = 16;
+  const c = clamp(Math.round(Number(count) || total), 1, total);
+  if (c === total) return [...COLUMN_NUMS];
+  // 以 10.5 为中心截取长度 c 的连续区间
+  const start = Math.round(10.5 - c / 2);
+  const s = clamp(start, 3, 18 - c + 1);
+  return Array.from({ length: c }, (_, i) => s + i);
+}
+
+/**
+ * 数值参数：undefined / null / 空串 / 非法值 → 用默认值；0 是合法输入（会被钳到 min）。
+ */
+function pickNum(value, fallback) {
+  if (value === undefined || value === null || value === '') return fallback;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+/**
+ * 归一化一局的规则配置。
+ * input: { markers, winColumns, columnCount }
+ */
+export function normalizeRules(input = {}) {
+  const markers = clamp(
+    Math.round(pickNum(input.markers, RULES.markers)),
+    CONFIG_LIMITS.markers.min,
+    CONFIG_LIMITS.markers.max,
+  );
+  const columnCount = clamp(
+    Math.round(pickNum(input.columnCount, COLUMN_NUMS.length)),
+    CONFIG_LIMITS.columnCount.min,
+    CONFIG_LIMITS.columnCount.max,
+  );
+  const cols = columnsForCount(columnCount);
+  // 胜利列数不能超过牌面上实际存在的列数
+  const winColumns = clamp(
+    Math.round(pickNum(input.winColumns, RULES.winColumns)),
+    CONFIG_LIMITS.winColumns.min,
+    cols.length,
+  );
+  return { markers, winColumns, columnCount: cols.length, columns: cols };
+}
+
+/** 取当前 state 的配置（兼容旧存档：没有 rules 时用默认值） */
+export function rulesOf(state) {
+  return state?.rules || normalizeRules({});
+}
+
+/** 某局实际使用的列列表 */
+export function columnsOf(state) {
+  return rulesOf(state).columns;
+}
+
 /* ═══════════════════ 骰子：280 种分组 ═══════════════════ */
 
 /**
@@ -234,21 +307,26 @@ export function newTurn(round = 1) {
 }
 
 export const legsUsed = (legs) => Object.keys(legs || {}).length;
-export const legsLeft = (legs) => RULES.markers - legsUsed(legs);
+export const legsLeft = (legs, markers = RULES.markers) => markers - legsUsed(legs);
 
 /**
  * 计算应用一组数字（3 个值，允许重复）后，每条腿的新位置。
  * **不修改 state**，用于预览所有候选分法。
+ *
+ * opts.markers  本局的路标上限（默认 RULES.markers）
+ * opts.columns  本局启用的列（默认 3~18 全部）
  *
  * 返回 {
  *   ok: boolean,
  *   reason?: string,
  *   legs: 新的 legs 对象,
  *   moves: [{ n, from, to, steps }],
- *   closedSkipped: [n...]   被封锁而跳过的数字
+ *   closedSkipped: [n...]   被封锁 / 不在本局牌面 / 腿不够 而跳过的数字
  * }
  */
-export function previewValues(player, players, turn, values) {
+export function previewValues(player, players, turn, values, opts = {}) {
+  const maxLegs = opts.markers ?? RULES.markers;
+  const activeCols = opts.columns ? new Set(opts.columns) : null;
   const legs = { ...turn.legs };
   const moves = [];
   const closedSkipped = [];
@@ -267,7 +345,7 @@ export function previewValues(player, players, turn, values) {
 
   for (const n of nums) {
     const steps = counts.get(n);
-    if (!isColumnNumber(n)) {
+    if (!isColumnNumber(n) || (activeCols && !activeCols.has(n))) {
       closedSkipped.push(n);
       continue;
     }
@@ -281,7 +359,7 @@ export function previewValues(player, players, turn, values) {
 
     if (!cur) {
       // 需要新腿
-      if (used >= RULES.markers) {
+      if (used >= maxLegs) {
         closedSkipped.push(n); // 腿不够，该数字作废
         continue;
       }
@@ -334,7 +412,7 @@ export function previewValues(player, players, turn, values) {
  *
  * 返回 [{ key, values, splitIndex, preview }]
  */
-export function candidateSplits(player, players, turn) {
+export function candidateSplits(player, players, turn, opts = {}) {
   if (!turn.dice) return [];
   const seen = new Set();
   const out = [];
@@ -343,7 +421,7 @@ export function candidateSplits(player, players, turn) {
     const key = [...values].sort((a, b) => a - b).join(',');
     if (seen.has(key)) return;
     seen.add(key);
-    const preview = previewValues(player, players, turn, values);
+    const preview = previewValues(player, players, turn, values, opts);
     if (!preview.ok) return;
     out.push({ key, values, splitIndex: i, preview });
   });
@@ -365,7 +443,7 @@ export const OFFER_COUNT = 5;
  * 返回 [{ key, values, splitIndex, preview, ok }]，长度固定为 min(5, 去重后总数)。
  *   ok=true 表示该分法能走（可被选择）。
  */
-export function drawOffer(player, players, turn, rng = Math.random) {
+export function drawOffer(player, players, turn, rng = Math.random, opts = {}) {
   if (!turn.dice) return [];
   const seen = new Set();
   const pool = [];
@@ -386,7 +464,7 @@ export function drawOffer(player, players, turn, rng = Math.random) {
   const picked = arr.slice(0, OFFER_COUNT);
 
   return picked.map((c) => {
-    const preview = previewValues(player, players, turn, c.values);
+    const preview = previewValues(player, players, turn, c.values, opts);
     return { ...c, preview, ok: preview.ok };
   });
 }
@@ -454,10 +532,16 @@ export function currentPlayer(state) {
   return state.players[state.current];
 }
 
-export function newGameState(players, rng = Math.random) {
+/**
+ * 新建对局。
+ * opts: { markers, winColumns, columnCount } —— 本局可配置规则（可选，默认值见 normalizeRules）
+ */
+export function newGameState(players, rng = Math.random, opts = {}) {
   const state = {
     players,
     current: 0,
+    /** 本局规则配置（路标数 / 获胜列数 / 牌面列） */
+    rules: normalizeRules(opts),
     turn: newTurn(1),
     log: [],
     winnerSeats: null,
@@ -480,10 +564,11 @@ export function newGameState(players, rng = Math.random) {
 function rollAndOffer(state, rng) {
   const turn = state.turn;
   const player = currentPlayer(state);
+  const rules = rulesOf(state);
   const r = rollDice(rng);
   turn.dice = r.dice;
   turn.rolls += 1;
-  const offer = drawOffer(player, state.players, turn, rng);
+  const offer = drawOffer(player, state.players, turn, rng, { markers: rules.markers, columns: rules.columns });
   turn.offer = offer.length ? offer : null;
   return offer.some((c) => c.ok);
 }
@@ -563,7 +648,7 @@ export function stopTurn(state, rng = Math.random) {
     }
   }
 
-  const winners = players.filter((p) => p.claimed.length >= RULES.winColumns);
+  const winners = players.filter((p) => p.claimed.length >= rulesOf(state).winColumns);
   if (winners.length) {
     state.winnerSeats = winners.map((p) => p.seat);
     state.ended = true;

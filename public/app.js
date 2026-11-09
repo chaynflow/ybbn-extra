@@ -1,5 +1,5 @@
 /* 欲罢不能 · 9骰扩展包 —— 前端主程序 */
-import { COLUMN_LIST, PLAYER_COLORS, RULES } from '/shared/engine.js';
+import { COLUMN_LIST, PLAYER_COLORS, RULES, columnsForCount, pathLen } from '/shared/engine.js';
 
 const app = document.getElementById('view');
 const toastEl = document.getElementById('toast');
@@ -127,7 +127,7 @@ async function renderLobby() {
           <input id="roomName" maxlength="30" placeholder="房间名（可留空）" />
           <label class="row">
             <span class="muted">电脑对手</span>
-            <select id="botCount" style="width:auto">
+            <select id="botCount" class="mini-select">
               <option value="1">1 个</option>
               <option value="2" selected>2 个</option>
               <option value="3">3 个</option>
@@ -135,6 +135,28 @@ async function renderLobby() {
               <option value="5">5 个</option>
             </select>
           </label>
+
+          <div class="settings">
+            <div class="setting">
+              <label for="setMarkers">路标数</label>
+              <select id="setMarkers" class="mini-select">
+                ${[1, 2, 3, 4, 5, 6].map((v) => `<option value="${v}" ${v === 3 ? 'selected' : ''}>${v} 枚</option>`).join('')}
+              </select>
+            </div>
+            <div class="setting">
+              <label for="setWin">需占领</label>
+              <select id="setWin" class="mini-select">
+                ${[1, 2, 3, 4, 5, 6, 7, 8].map((v) => `<option value="${v}" ${v === 5 ? 'selected' : ''}>${v} 条路径</option>`).join('')}
+              </select>
+            </div>
+            <div class="setting">
+              <label for="setCols">展示路径</label>
+              <select id="setCols" class="mini-select">
+                ${[5, 7, 9, 11, 13, 15, 16].map((v) => `<option value="${v}" ${v === 16 ? 'selected' : ''}>${v} 条</option>`).join('')}
+              </select>
+            </div>
+          </div>
+          <p class="muted settings-hint" id="settingsHint"></p>
           <button class="primary" id="createRoom">创建房间</button>
         </div>
       </div>
@@ -173,6 +195,9 @@ async function renderLobby() {
         body: {
           roomName: document.getElementById('roomName').value.trim(),
           botCount: Number(document.getElementById('botCount').value),
+          markers: Number(document.getElementById('setMarkers').value),
+          winColumns: Number(document.getElementById('setWin').value),
+          columnCount: Number(document.getElementById('setCols').value),
         },
       });
       state.seat = r.seat;
@@ -181,6 +206,22 @@ async function renderLobby() {
       toast(e.message, 'bad');
     }
   };
+
+  // 设置项联动提示：展示哪几列、获胜数与列数的关系
+  const updateHint = () => {
+    const cols = Number(document.getElementById('setCols').value);
+    const win = Number(document.getElementById('setWin').value);
+    const mk = Number(document.getElementById('setMarkers').value);
+    const list = columnsForCount(cols);
+    const hint = document.getElementById('settingsHint');
+    if (!hint) return;
+    const warn = win > cols ? ' ⚠️ 将自动调整为 ' + cols + ' 条' : '';
+    hint.textContent = `牌面 ${list[0]}~${list[list.length - 1]} 号（共 ${cols} 条）· 每回合 ${mk} 条腿 · 先占 ${Math.min(win, cols)} 条路径获胜${warn}`;
+  };
+  ['setCols', 'setWin', 'setMarkers'].forEach((id) => {
+    document.getElementById(id)?.addEventListener('change', updateHint);
+  });
+  updateHint();
 
   document.getElementById('joinRoom').onclick = async () => {
     if (!state.user) return toast('请先输入昵称', 'bad');
@@ -370,18 +411,19 @@ function paintGame() {
     .sort((a, b) => Number(a[0]) - Number(b[0]))
     .map(([n, at]) => {
       const nn = Number(n);
-      const len = (COLUMN_LIST.find((c) => c.n === nn) || {}).len || 0;
+      const len = pathLen(nn) || 0;
       return `<span class="leg-chip" style="border-color:${cur.hex}">${nn} 号 <b>${at}</b>/${len}</span>`;
     })
     .join('');
 
-  /* ── 棋盘 ── */
-  const boardHtml = COLUMN_LIST.map((col) => {
-    const n = col.n;
+  /* ── 棋盘（只渲染本局启用的列） ── */
+  const gameCols = (g.rules?.columns || COLUMN_LIST.map((c) => c.n)).slice().sort((a, b) => a - b);
+  const boardHtml = gameCols.map((n) => {
+    const len = pathLen(n);
     const ownerSeat = closed[n];
     const legAt = legs[n] || 0;
     const spots = [];
-    for (let idx = 0; idx < col.len; idx++) {
+    for (let idx = 0; idx < len; idx++) {
       const cellNo = idx + 1;
       // 找出哪些玩家永久进度覆盖此格
       const holders = g.players.filter((p) => (p.progress?.[n] || 0) >= cellNo);
@@ -400,14 +442,14 @@ function paintGame() {
         cls += ' leg';
         style += `;--legc:${cur.hex}`;
       }
-      if (ownerSeat !== undefined && idx === col.len - 1) cls += ' claim-top';
+      if (ownerSeat !== undefined && idx === len - 1) cls += ' claim-top';
       spots.push(`<span class="${cls}" style="${style}" title="${n} 号 · 第 ${cellNo} 格${isLeg ? ' · 路标' : ''}"></span>`);
     }
     const ownerP = ownerSeat !== undefined ? g.players[ownerSeat] : null;
     return `
       <div class="col-row ${ownerP ? 'closed' : ''}">
         <span class="col-num" style="${ownerP ? `color:${ownerP.hex}` : ''}">${n}</span>
-        <div class="spots" style="--n:${col.len}">${spots.join('')}</div>
+        <div class="spots" style="--n:${len}">${spots.join('')}</div>
         ${ownerP ? `<span class="owner-tag" style="background:${ownerP.hex}">${esc(ownerP.name)}</span>` : '<span class="owner-tag empty"></span>'}
       </div>`;
   }).join('');
@@ -555,11 +597,19 @@ function renderRules() {
         <li>继续后若一种分法都推不动 → <b>爆掉</b>，本回合新推进的格数全部作废（永久进度不受影响）。</li>
       </ul>
 
+      <h3>可自定义的规则（建房时可设）</h3>
+      <ul>
+        <li><b>路标数</b>：1~6 枚（默认 3）。路标越少，每回合能推进的列越少，越容易爆掉。</li>
+        <li><b>需占领路径数</b>：1~N 条（默认 5，N = 展示的路径数）。</li>
+        <li><b>展示路径数</b>：5~16 条（默认 16）。少于此数时，会取 3~18 里<b>围绕中间的一段</b>
+          （例如 10 条 → 6~15 号），保证长短分布最优。</li>
+      </ul>
+
       <h3>占领与胜利</h3>
       <ul>
         <li>某列走到最后一格并在停止时确认 → 该列<b>归你所有并永久封锁</b>。</li>
         <li>封锁后：其他玩家在该列的进度<b>清零</b>，任何人（包括你自己）都不能再推进该列。</li>
-        <li>先占领 <b>5 列</b>者获胜。</li>
+        <li>先占领<b>规定条数</b>的路径者获胜（默认 5 条）。</li>
       </ul>
 
       <h3>和标准版的差异</h3>
