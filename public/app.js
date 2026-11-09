@@ -1,5 +1,5 @@
 /* 欲罢不能 · 9骰扩展包 —— 前端主程序 */
-import { COLUMN_LIST, PLAYER_COLORS, RULES, columnsForCount, pathLen } from '/shared/engine.js';
+import { COLUMN_LIST, PLAYER_COLORS, RULES, SPLIT_COUNT, columnsForCount, pathLen } from '/shared/engine.js';
 
 const app = document.getElementById('view');
 const toastEl = document.getElementById('toast');
@@ -155,6 +155,14 @@ async function renderLobby() {
                 ${[5, 7, 9, 11, 13, 15, 16].map((v) => `<option value="${v}" ${v === 16 ? 'selected' : ''}>${v} 条</option>`).join('')}
               </select>
             </div>
+            <div class="setting">
+              <label for="setOffer">展示方案</label>
+              <select id="setOffer" class="mini-select">
+                ${[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
+                  .map((v) => `<option value="${v}" ${v === 5 ? 'selected' : ''}>${v} / ${SPLIT_COUNT} 种</option>`)
+                  .join('')}
+              </select>
+            </div>
           </div>
           <p class="muted settings-hint" id="settingsHint"></p>
           <button class="primary" id="createRoom">创建房间</button>
@@ -198,6 +206,7 @@ async function renderLobby() {
           markers: Number(document.getElementById('setMarkers').value),
           winColumns: Number(document.getElementById('setWin').value),
           columnCount: Number(document.getElementById('setCols').value),
+          offerCount: Number(document.getElementById('setOffer').value),
         },
       });
       state.seat = r.seat;
@@ -207,18 +216,22 @@ async function renderLobby() {
     }
   };
 
-  // 设置项联动提示：展示哪几列、获胜数与列数的关系
+  // 设置项联动提示：展示哪几列、获胜数与列数的关系、每回合给几种方案
   const updateHint = () => {
     const cols = Number(document.getElementById('setCols').value);
     const win = Number(document.getElementById('setWin').value);
     const mk = Number(document.getElementById('setMarkers').value);
+    const oc = Number(document.getElementById('setOffer').value);
     const list = columnsForCount(cols);
     const hint = document.getElementById('settingsHint');
     if (!hint) return;
-    const warn = win > cols ? ' ⚠️ 将自动调整为 ' + cols + ' 条' : '';
-    hint.textContent = `牌面 ${list[0]}~${list[list.length - 1]} 号（共 ${cols} 条）· 每回合 ${mk} 条腿 · 先占 ${Math.min(win, cols)} 条路径获胜${warn}`;
+    const warn = win > cols ? ` ⚠️ 将自动调整为 ${cols} 条` : '';
+    hint.textContent =
+      `牌面 ${list[0]}~${list[list.length - 1]} 号（共 ${cols} 条）· ` +
+      `每回合 ${mk} 条腿 · 从 ${SPLIT_COUNT} 种分法里随机给 ${oc} 种选择 · ` +
+      `先占 ${Math.min(win, cols)} 条路径获胜${warn}`;
   };
-  ['setCols', 'setWin', 'setMarkers'].forEach((id) => {
+  ['setCols', 'setWin', 'setMarkers', 'setOffer'].forEach((id) => {
     document.getElementById(id)?.addEventListener('change', updateHint);
   });
   updateHint();
@@ -482,7 +495,7 @@ function paintGame() {
       if (mustChoose) {
         actionHtml = `
           ${summaryBox}
-          <p class="choose-hint">👇 从 280 种分法里随机抽出的 <b>${offer.length}</b> 种中选一个${legalCount < offer.length ? `（其中 <b>${legalCount}</b> 种能走）` : ''}；选了的数字会被强制走完</p>
+          <p class="choose-hint">👇 从 ${SPLIT_COUNT} 种分法里随机抽出的 <b>${offer.length}</b> 种中选一个${legalCount < offer.length ? `（其中 <b>${legalCount}</b> 种能走）` : ''}；选了的数字会被强制走完</p>
           <div class="offers">${offerHtml}</div>`;
       } else {
         actionHtml = `
@@ -492,7 +505,7 @@ function paintGame() {
             <button class="primary" id="btnStop">✋ 停止并锁定</button>
             <button id="btnContinue">🎲 继续摇</button>
           </div>
-          <p class="muted hint">路标已用 ${turn.legsUsed}/${g.markers}：本回合最多推进 ${g.markers} 个不同的列。继续摇会重新发 5 种分法，若一种都落不进有效列就爆掉。</p>`;
+          <p class="muted hint">路标已用 ${turn.legsUsed}/${g.markers}：本回合最多推进 ${g.markers} 个不同的列。继续摇会重新从 ${SPLIT_COUNT} 种里抽 ${g.rules?.offerCount || 5} 种，若一种都落不进有效列就爆掉。</p>`;
       }
     }
   } else {
@@ -577,7 +590,7 @@ function renderRules() {
       <h3>骰子：9 枚，自由分组</h3>
       <ul>
         <li>每回合摇 <b>9 枚</b>骰子，玩家把它们任意分成 <b>3 组、每组 3 枚</b>，每组求和 → <b>3 个数字</b>（3~18）。</li>
-        <li>9 枚骰子分成 3 组共 <b>280 种</b>分法，但每回合只<b>随机提供 5 种</b>，你从这 5 种里选一个。</li>
+        <li>9 枚骰子分成 3 组共 <b>${SPLIT_COUNT} 种</b>分法，但每回合只<b>随机提供若干种</b>（默认 5，可调 1~10），你从中选一个。</li>
         <li>同一数字出现多次就<b>前进多步</b>：例如 <span class="kbd">10+10+10</span> → 10 号列直接前进 <b>3 格</b>（依然只占 1 条路标）。</li>
         <li>单组 3 骰分布：10、11 各 12.5%（最长 24 格），3、18 各 0.5%（最短 3 格）。</li>
       </ul>
@@ -603,6 +616,8 @@ function renderRules() {
         <li><b>需占领路径数</b>：1~N 条（默认 5，N = 展示的路径数）。</li>
         <li><b>展示路径数</b>：5~16 条（默认 16）。少于此数时，会取 3~18 里<b>围绕中间的一段</b>
           （例如 10 条 → 6~15 号），保证长短分布最优。</li>
+        <li><b>展示方案数</b>：1~10 种（默认 5）。每回合从 <b>${SPLIT_COUNT} 种</b>分法里随机抽这么多种给你选；
+          抽到的可能走不了，1 种时最残酷——没得挑。</li>
       </ul>
 
       <h3>占领与胜利</h3>

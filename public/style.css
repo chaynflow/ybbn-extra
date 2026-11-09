@@ -186,12 +186,17 @@ select:focus {
 /* 建房设置项 */
 .settings {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(2, 1fr);
   gap: 0.5rem;
   padding: 0.6rem;
   border-radius: 12px;
   border: 1px solid var(--line);
   background: #171a22;
+}
+@media (min-width: 520px) {
+  .settings {
+    grid-template-columns: repeat(4, 1fr);
+  }
 }
 .setting {
   display: flex;

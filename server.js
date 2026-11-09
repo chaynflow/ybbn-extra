@@ -19,6 +19,7 @@ import {
   PATH_LENGTHS,
   TOTAL_SPACES,
   PLAYER_COLORS,
+  SPLIT_COUNT,
 } from './shared/engine.js';
 import { simulateWinRates } from './shared/ai.js';
 import * as db from './src/db.js';
@@ -87,6 +88,7 @@ app.get('/api/meta', (_req, res) => {
     columns: COLUMN_LIST,
     pathLengths: PATH_LENGTHS,
     totalSpaces: TOTAL_SPACES,
+    splitCount: SPLIT_COUNT,
     colors: PLAYER_COLORS,
   });
 });
@@ -140,8 +142,17 @@ app.get('/api/rooms', wrap(async (_req, res) => {
 
 app.post('/api/rooms', wrap(async (req, res) => {
   const user = await requireUser(req);
-  const { roomName, botCount, color, markers, winColumns, columnCount } = req.body || {};
-  const game = await rooms.createRoom({ roomName, host: user, botCount, color, markers, winColumns, columnCount });
+  const { roomName, botCount, color, markers, winColumns, columnCount, offerCount } = req.body || {};
+  const game = await rooms.createRoom({
+    roomName,
+    host: user,
+    botCount,
+    color,
+    markers,
+    winColumns,
+    columnCount,
+    offerCount,
+  });
   const seat = 0;
   res.json({ game: rooms.publicView(game, seat), seat });
 }));

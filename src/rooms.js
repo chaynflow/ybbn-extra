@@ -74,12 +74,13 @@ export function publicView(game, viewerSeat = null) {
     winnerSeats: d.winnerSeats,
     current: d.current,
     round: turn?.round ?? 1,
-    /** 本局规则：路标数 / 获胜列数 / 牌面列 */
+    /** 本局规则：路标数 / 获胜列数 / 牌面列 / 每回合展示分法数 */
     rules: {
       markers: rules.markers,
       winColumns: rules.winColumns,
       columnCount: rules.columnCount,
       columns: rules.columns,
+      offerCount: rules.offerCount,
     },
     winColumns: rules.winColumns,
     markers: rules.markers,
@@ -135,7 +136,7 @@ export function publicView(game, viewerSeat = null) {
  * 创建房间。
  * options: { markers, winColumns, columnCount } —— 可选，会做范围校验与归一化
  */
-export async function createRoom({ roomName, host, botCount = 0, color, markers, winColumns, columnCount }) {
+export async function createRoom({ roomName, host, botCount = 0, color, markers, winColumns, columnCount, offerCount }) {
   const seats = Math.min(RULES.maxPlayers, 1 + Math.max(0, Math.min(5, botCount)));
   const players = [];
   for (let i = 0; i < seats; i++) {
@@ -143,7 +144,7 @@ export async function createRoom({ roomName, host, botCount = 0, color, markers,
     players.push(createPlayer(i, isBot ? `电脑${i}` : host.name, i === 0 ? color || 'red' : undefined, isBot));
   }
 
-  const rules = normalizeRules({ markers, winColumns, columnCount });
+  const rules = normalizeRules({ markers, winColumns, columnCount, offerCount });
   const data = newGameState(players, Math.random, rules);
   data.players = players;
 

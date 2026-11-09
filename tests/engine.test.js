@@ -333,3 +333,61 @@ test('AI 在极小配置下也能打完（2 腿 / 2 列胜 / 7 条路径）', ()
     for (const n of w.claimed) assert.ok(cols.has(n), `占领了牌面外的 ${n} 号列`);
   }
 });
+
+/* ═══════════ 展示方案数 offerCount ═══════════ */
+
+test('offerCount：范围 1~10，默认 5', () => {
+  assert.equal(CONFIG_LIMITS.offerCount.min, 1);
+  assert.equal(CONFIG_LIMITS.offerCount.max, 10);
+  assert.equal(normalizeRules({}).offerCount, 5);
+  assert.equal(normalizeRules({ offerCount: 1 }).offerCount, 1);
+  assert.equal(normalizeRules({ offerCount: 10 }).offerCount, 10);
+  assert.equal(normalizeRules({ offerCount: 99 }).offerCount, 10, '超上限应钳到 10');
+  assert.equal(normalizeRules({ offerCount: 0 }).offerCount, 1, '低于下限应钳到 1');
+  assert.equal(normalizeRules({ offerCount: -3 }).offerCount, 1);
+});
+
+test('offerCount：实际发出方案数与配置一致', () => {
+  for (const offerCount of [1, 2, 3, 5, 7, 10]) {
+    const ps = mkPlayers(2);
+    const st = newGameState(ps, mkRng(100 + offerCount), { markers: 3, winColumns: 5, columnCount: 16, offerCount });
+    assert.equal(st.rules.offerCount, offerCount);
+    assert.ok(st.turn.offer, '开局应有 offer');
+    assert.ok(
+      st.turn.offer.length <= offerCount,
+      `offer 长度 ${st.turn.offer.length} 不应超过 ${offerCount}`,
+    );
+    if (st.turn.offer.length !== offerCount) {
+      // 只在去重后组合数不足时才会少于配置值
+      const all = candidateSplits(currentPlayer(st), st.players, st.turn);
+      const distinct = new Set(all.map((c) => c.key)).size;
+      assert.ok(distinct <= offerCount, `只有 ${distinct} 种可用组合，offer 少于 ${offerCount} 合理`);
+    }
+  }
+});
+
+test('offerCount=1 时只给一个方案，仍可正常对局', () => {
+  const winCount = [0, 0];
+  for (let i = 0; i < 40; i++) {
+    const rng = mkRng(700 + i * 11);
+    const ps = mkPlayers(2);
+    const st = newGameState(ps, rng, { markers: 3, winColumns: 3, columnCount: 9, offerCount: 1 });
+    let guard = 0;
+    while (!st.ended && guard++ < 30000) stepOnce(st, rng);
+    assert.ok(st.ended, `第 ${i} 局未结束`);
+    for (const s of st.winnerSeats) winCount[s]++;
+  }
+  assert.ok(winCount[0] + winCount[1] === 40);
+});
+
+test('offerCount=10 时最多给 10 个方案', () => {
+  const ps = mkPlayers(2);
+  const rng = mkRng(4242);
+  let maxSeen = 0;
+  for (let i = 0; i < 100; i++) {
+    const st = newGameState(ps.map((p) => createPlayer(p.seat, p.name, p.color)), rng, { offerCount: 10 });
+    maxSeen = Math.max(maxSeen, st.turn.offer?.length || 0);
+    assert.ok((st.turn.offer?.length || 0) <= 10);
+  }
+  assert.ok(maxSeen <= 10, `应不超过 10，实际 ${maxSeen}`);
+});

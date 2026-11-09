@@ -93,6 +93,8 @@ export const CONFIG_LIMITS = Object.freeze({
   winColumns: { min: 1, max: 16, default: RULES.winColumns },
   /** 展示/使用的路径数（从 3~18 里取全部或中间一段） */
   columnCount: { min: 1, max: 16, default: 16 },
+  /** 每回合从 280 种分法里展示几种供选择 */
+  offerCount: { min: 1, max: 10, default: 5 },
 });
 
 /**
@@ -143,7 +145,12 @@ export function normalizeRules(input = {}) {
     CONFIG_LIMITS.winColumns.min,
     cols.length,
   );
-  return { markers, winColumns, columnCount: cols.length, columns: cols };
+  const offerCount = clamp(
+    Math.round(pickNum(input.offerCount, OFFER_COUNT)),
+    CONFIG_LIMITS.offerCount.min,
+    CONFIG_LIMITS.offerCount.max,
+  );
+  return { markers, winColumns, columnCount: cols.length, columns: cols, offerCount };
 }
 
 /** 取当前 state 的配置（兼容旧存档：没有 rules 时用默认值） */
@@ -428,7 +435,7 @@ export function candidateSplits(player, players, turn, opts = {}) {
   return out;
 }
 
-/** 每回合随机提供的分法数量 */
+/** 每回合随机提供的分法数量（默认值，实际按局配置 offerCount） */
 export const OFFER_COUNT = 5;
 
 /**
@@ -445,6 +452,7 @@ export const OFFER_COUNT = 5;
  */
 export function drawOffer(player, players, turn, rng = Math.random, opts = {}) {
   if (!turn.dice) return [];
+  const offerCount = opts.offerCount ?? OFFER_COUNT;
   const seen = new Set();
   const pool = [];
   SPLITS.forEach((split, i) => {
@@ -455,13 +463,13 @@ export function drawOffer(player, players, turn, rng = Math.random, opts = {}) {
     pool.push({ key, values, splitIndex: i });
   });
 
-  // 从全部去重后的组合里随机抽 5 种（Fisher-Yates）
+  // 从全部去重后的组合里随机抽 offerCount 种（Fisher-Yates）
   const arr = pool.slice();
   for (let i = arr.length - 1; i > 0; i--) {
     const j = Math.floor(rng() * (i + 1));
     [arr[i], arr[j]] = [arr[j], arr[i]];
   }
-  const picked = arr.slice(0, OFFER_COUNT);
+  const picked = arr.slice(0, Math.max(1, Math.min(offerCount, arr.length)));
 
   return picked.map((c) => {
     const preview = previewValues(player, players, turn, c.values, opts);
@@ -568,7 +576,11 @@ function rollAndOffer(state, rng) {
   const r = rollDice(rng);
   turn.dice = r.dice;
   turn.rolls += 1;
-  const offer = drawOffer(player, state.players, turn, rng, { markers: rules.markers, columns: rules.columns });
+  const offer = drawOffer(player, state.players, turn, rng, {
+    markers: rules.markers,
+    columns: rules.columns,
+    offerCount: rules.offerCount,
+  });
   turn.offer = offer.length ? offer : null;
   return offer.some((c) => c.ok);
 }
