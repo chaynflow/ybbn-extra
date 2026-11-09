@@ -356,6 +356,8 @@ function paintGame() {
   if (!g) return;
   const turn = g.turn || {};
   const ended = g.ended;
+  /** 自己所在的座位（null = 观战） */
+  const you = g.seat != null ? g.seat : null;
   const yourTurn = g.isYourTurn;
   const legs = turn.legs || {};
   const closed = g.closed || {};
@@ -459,8 +461,27 @@ function paintGame() {
       spots.push(`<span class="${cls}" style="${style}" title="${n} 号 · 第 ${cellNo} 格${isLeg ? ' · 路标' : ''}"></span>`);
     }
     const ownerP = ownerSeat !== undefined ? g.players[ownerSeat] : null;
+    // 我自己在这条路径上已走的格数（永久进度）
+    const myProgress = you != null ? g.players[you]?.progress?.[n] || 0 : 0;
+    // 本回合临时推进到第几格（含路标），用于显示 +N
+    const myPending = you != null ? Math.max(0, legAt - myProgress) : 0;
+    const isClosedByOther = ownerSeat !== undefined && ownerSeat !== you;
+
+    let mineHtml = '';
+    if (myProgress > 0 || myPending > 0) {
+      const myHex = (you != null ? g.players[you]?.hex : null) || '#ffb020';
+      const tip =
+        `${n} 号：你已走 ${myProgress}/${len} 格` + (myPending > 0 ? `，本回合另推进 ${myPending} 格` : '');
+      mineHtml = `<span class="mine ${myPending > 0 ? 'mine-pending' : ''}"
+          style="--mc:${myHex};color:${myHex};border-color:${myHex}80;background:${myHex}22"
+          title="${tip}">${myProgress}${myPending > 0 ? `<i>+${myPending}</i>` : ''}</span>`;
+    } else {
+      mineHtml = '<span class="mine empty"></span>';
+    }
+
     return `
-      <div class="col-row ${ownerP ? 'closed' : ''}">
+      <div class="col-row ${ownerP ? 'closed' : ''} ${isClosedByOther ? 'closed-other' : ''}">
+        ${mineHtml}
         <span class="col-num" style="${ownerP ? `color:${ownerP.hex}` : ''}">${n}</span>
         <div class="spots" style="--n:${len}">${spots.join('')}</div>
         ${ownerP ? `<span class="owner-tag" style="background:${ownerP.hex}">${esc(ownerP.name)}</span>` : '<span class="owner-tag empty"></span>'}
